@@ -25,11 +25,11 @@ user = os.getlogin()
 ###################
 
 def update_node_lst(self, context):
-    
+	
+	# Clear the node list to repopulate it
     self.node_lst.clear()
     
     selected = self.cat_lst
-    
     cat_path = os.path.join(base_path, selected)
     
     files = os.listdir(cat_path)
@@ -75,11 +75,10 @@ class GetNodeName(bpy.types.Operator):
 class CUSTOMNODES_UL_customnodes(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
         
-        if self.layout_type in {'DEFAULT', 'COMPACT'}:            
-        
-            layout.prop(item, "name", text="", emboss=False)
-            layout.prop(item, "desc", text="", emboss=False)
-    
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+			layout.prop(item, "name", text="", emboss=False)
+			layout.prop(item, "desc", text="", emboss=False)
+			
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label("")
@@ -92,9 +91,9 @@ class ExportNodes(bpy.types.Operator):
     def execute(self, context):
         
         ng_name = bpy.context.scene.custom_nodes.ng_name
-         
         sel = context.active_node.node_tree.name
-        node_group = bpy.data.node_groups[sel]
+		
+		node_group = bpy.data.node_groups[sel]
         
         user_path = os.path.join(base_path, user)
         
@@ -124,9 +123,10 @@ class ExportNodes(bpy.types.Operator):
             copy(new_file, arch_path)
         
         ### Copy empty blender file and write the node_group to that file ###
-        copyfile(empty_blend, new_file)    
+        copyfile(empty_blend, new_file)
         bpy.data.libraries.write(new_file, {node_group}, fake_user=True, compress=True)
-        with open('{}\\{}_desc.txt'.format(user_path, ng_name), 'w') as txtfile:
+        
+		with open('{}\\{}_desc.txt'.format(user_path, ng_name), 'w') as txtfile:
             txtfile.write(bpy.context.scene.custom_nodes.ng_desc)
         
         ### Update node list ###
@@ -143,24 +143,37 @@ class ImportNodes(bpy.types.Operator):
     
     def execute(self, context):
         
+		# Get the selected node name
         node_props = bpy.context.scene.custom_nodes
-        sel_cat = bpy.context.scene.custom_nodes.cat_lst
         node_name = node_props.node_lst[node_props.index].name
-        
+		
+		# Get path for the node to import
+        sel_cat = bpy.context.scene.custom_nodes.cat_lst        
         cat_path = os.path.join(base_path, sel_cat)
         
+		# Append the selected node group 
         with bpy.data.libraries.load('{}\\{}.blend'.format(cat_path, node_name), link=False) as (data_from, data_to):
             data_to.node_groups = [node for node in data_from.node_groups if node == node_name]   
         
-        if self.create:
-            if context.active_object.type == 'MESH':
-                nodetree = context.active_object.active_material.node_tree
-            else:
-                nodetree = context.active_object.data.node_tree
-            node = nodetree.nodes.new("ShaderNodeGroup")
-            node.node_tree = bpy.data.node_groups[node_name]
-            
-                
+		# If the user clicked append and create
+		if self.create:
+			
+			# Is this a shader node group or a compositing node group
+			if bpy.data.node_groups[node_name].type == 'SHADER': 
+				if context.active_object.type == 'MESH':
+					nodetree = context.active_object.active_material.node_tree
+				else:
+					nodetree = context.active_object.data.node_tree
+					
+				node = nodetree.nodes.new("ShaderNodeGroup")
+				node.node_tree = bpy.data.node_groups[node_name]
+					
+			elif bpy.data.node_groups[node_name].type == 'COMPOSITING':
+			
+				nodetree = bpy.context.scene.node_tree
+				node = nodetree.nodes.new("CompositorNodeGroup")
+				node.node_tree = bpy.data.node_groups[node_name]
+				
         return {'FINISHED'}    
 
 #########################
@@ -173,9 +186,14 @@ class CustomNodeGroups(bpy.types.PropertyGroup):
     
 class CustomNodeProperties(bpy.types.PropertyGroup):
     
-    node_lst = bpy.props.CollectionProperty(type=CustomNodeGroups)
-    index = bpy.props.IntProperty(default = -1, min=-1)
-    cat_lst = bpy.props.EnumProperty(name = 'Categories', items=update_cat_lst, update=update_node_lst)
+	index = bpy.props.IntProperty(default = -1, min=-1)
+	
+	node_lst = bpy.props.CollectionProperty(type=CustomNodeGroups)
+	
+	# Generate it's items from the Node Group Directory (update_cat_lst), and when the value changes
+	# run update_node_lst to populate node_lst
+	
+    cat_lst = bpy.props.EnumProperty(name = 'Categories', items = update_cat_lst, update = update_node_lst)
     
     ### ng saver settings, ng = Node Group ###
     ng_name = bpy.props.StringProperty()
